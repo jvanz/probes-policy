@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use lazy_static::lazy_static;
 
 use guest::prelude::*;
@@ -28,7 +28,7 @@ use kubewarden::{logging, protocol_version_guest, request::ValidationRequest, va
 mod settings;
 use settings::Settings;
 
-use slog::{info, o, warn, Logger};
+use slog::{Logger, info, o, warn};
 
 lazy_static! {
     static ref LOG_DRAIN: Logger = Logger::root(
@@ -37,7 +37,7 @@ lazy_static! {
     );
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wapc_init() {
     register_function("validate", validate);
     register_function("validate_settings", validate_settings::<Settings>);
@@ -158,7 +158,10 @@ fn validate(payload: &[u8]) -> CallResult {
             kubewarden::accept_request()
         }
         Err(_) => {
-            warn!(LOG_DRAIN, "cannot unmarshal resource: this policy does not know how to evaluate this resource; accept it");
+            warn!(
+                LOG_DRAIN,
+                "cannot unmarshal resource: this policy does not know how to evaluate this resource; accept it"
+            );
             kubewarden::reject_request(
                 Some("Cannot parse validation request".to_string()),
                 None,
