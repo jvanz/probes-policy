@@ -17,5 +17,5 @@
 ---
 repositoryID: <THE REPOSITORY ID INSIDE OF ARTIFACTHUB> # obtained after publishing the policy for the 1st time
 owners:
-- name: Nicolas Lamirault
-  email: nicolas.lamirault@gmail.com
+  - name: Kubewarden developers
+    email: cncf-kubewarden-maintainers@lists.cncf.io
