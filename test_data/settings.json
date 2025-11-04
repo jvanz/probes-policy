@@ -1,0 +1,8 @@
+{
+  "liveness": {
+    "enforce": true
+  },
+  "readiness": {
+    "enforce": true
+  }
+}

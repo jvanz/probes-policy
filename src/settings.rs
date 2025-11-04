@@ -1,20 +1,34 @@
-use crate::LOG_DRAIN;
-
 use serde::{Deserialize, Serialize};
-use slog::info;
 
+#[derive(Serialize, Deserialize, Debug)]
+pub(crate) struct ProbeConfiguration {
+    pub enforce: bool,
+}
 // Describe the settings your policy expects when
 // loaded by the policy server.
 #[derive(Serialize, Deserialize, Default, Debug)]
-#[serde(default)]
-pub(crate) struct Settings {}
+pub(crate) struct Settings {
+    pub liveness: ProbeConfiguration,
+    pub readiness: ProbeConfiguration,
+}
 
 impl kubewarden::settings::Validatable for Settings {
     fn validate(&self) -> Result<(), String> {
-        info!(LOG_DRAIN, "starting settings validation");
-
-        // TODO: perform settings validation if applies
+        if !self.liveness.enforce && !self.readiness.enforce {
+            return Err(
+                "at least one of liveness or readiness probe enforcement must be enabled"
+                    .to_string(),
+            );
+        }
         Ok(())
+    }
+}
+
+// The policy should validate the probes by default. Otherwise, there is no
+// point in using this policy.
+impl Default for ProbeConfiguration {
+    fn default() -> Self {
+        ProbeConfiguration { enforce: true }
     }
 }
 
@@ -25,10 +39,25 @@ mod tests {
     use kubewarden_policy_sdk::settings::Validatable;
 
     #[test]
-    fn validate_settings() -> Result<(), ()> {
-        let settings = Settings {};
+    fn validate_settings() {
+        let settings = Settings {
+            ..Default::default()
+        };
 
-        assert!(settings.validate().is_ok());
-        Ok(())
+        settings.validate().expect("validation should pass");
+    }
+
+    #[test]
+    fn validate_settings_fail() {
+        let settings = Settings {
+            liveness: ProbeConfiguration { enforce: false },
+            readiness: ProbeConfiguration { enforce: false },
+        };
+
+        let err = settings.validate().expect_err("validation should fail");
+        assert_eq!(
+            err,
+            "at least one of liveness or readiness probe enforcement must be enabled"
+        );
     }
 }

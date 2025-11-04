@@ -1,12 +1,17 @@
-# Kubewarden policy / probes-policy
-
-## Description
+# Kubewarden probes validation policy
 
 This policy validates that all containers have livenessProbe and readinessProbe
-defined.
+defined. As well as ensure that some basic configuration are defined on them.
 
 ## Settings
 
-This policy has no configurable settings. This would be a good place
-to document if yours does, and what behaviors can be configured by
-tweaking them.
+This policy configuration allows users to define if they want to enforce both
+liveness and readiness probes or only one of them in the containers definition.
+
+```yaml
+settings:
+  liveness:
+    enforce: true
+  readiness:
+    enforce: true
+```

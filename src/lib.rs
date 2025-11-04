@@ -28,8 +28,8 @@ pub extern "C" fn wapc_init() {
     register_function("protocol_version", protocol_version_guest);
 }
 
-fn validate_container(container: &apicore::Container) -> Result<()> {
-    if container.liveness_probe.is_none() {
+fn validate_container(container: &apicore::Container, settings: &Settings) -> Result<()> {
+    if container.liveness_probe.is_none() && settings.liveness.enforce {
         info!(
             LOG_DRAIN,
             "rejecting pod";
@@ -40,7 +40,7 @@ fn validate_container(container: &apicore::Container) -> Result<()> {
             &container.name
         ));
     }
-    if container.readiness_probe.is_none() {
+    if container.readiness_probe.is_none() && settings.readiness.enforce {
         info!(
             LOG_DRAIN,
             "rejecting pod";
@@ -54,8 +54,11 @@ fn validate_container(container: &apicore::Container) -> Result<()> {
     Ok(())
 }
 
-fn validate_ephemeral_container(container: &apicore::EphemeralContainer) -> Result<()> {
-    if container.liveness_probe.is_none() {
+fn validate_ephemeral_container(
+    container: &apicore::EphemeralContainer,
+    settings: &Settings,
+) -> Result<()> {
+    if container.liveness_probe.is_none() && settings.liveness.enforce {
         info!(
             LOG_DRAIN,
             "rejecting pod";
@@ -66,7 +69,7 @@ fn validate_ephemeral_container(container: &apicore::EphemeralContainer) -> Resu
             &container.name
         ));
     }
-    if container.readiness_probe.is_none() {
+    if container.readiness_probe.is_none() && settings.readiness.enforce {
         info!(
             LOG_DRAIN,
             "rejecting pod";
@@ -80,10 +83,10 @@ fn validate_ephemeral_container(container: &apicore::EphemeralContainer) -> Resu
     Ok(())
 }
 
-fn validate_pod(pod: &apicore::PodSpec) -> Result<()> {
+fn validate_pod(pod: &apicore::PodSpec, settings: &Settings) -> Result<()> {
     let mut err_message = String::new();
     for container in &pod.containers {
-        let container_valid = validate_container(container);
+        let container_valid = validate_container(container, settings);
         if container_valid.is_err() {
             err_message = err_message
                 + &format!(
@@ -95,7 +98,7 @@ fn validate_pod(pod: &apicore::PodSpec) -> Result<()> {
     }
     if let Some(init_containers) = &pod.init_containers {
         for container in init_containers {
-            let container_valid = validate_container(container);
+            let container_valid = validate_container(container, settings);
             if container_valid.is_err() {
                 err_message = err_message
                     + &format!(
@@ -108,7 +111,7 @@ fn validate_pod(pod: &apicore::PodSpec) -> Result<()> {
     }
     if let Some(ephemeral_containers) = &pod.ephemeral_containers {
         for container in ephemeral_containers {
-            let container_valid = validate_ephemeral_container(container);
+            let container_valid = validate_ephemeral_container(container, settings);
             if container_valid.is_err() {
                 err_message = err_message
                     + &format!(
@@ -132,7 +135,7 @@ fn validate(payload: &[u8]) -> CallResult {
     match validation_request.extract_pod_spec_from_object() {
         Ok(pod_spec) => {
             if let Some(pod_spec) = pod_spec {
-                return match validate_pod(&pod_spec) {
+                return match validate_pod(&pod_spec, &validation_request.settings) {
                     Ok(_) => kubewarden::accept_request(),
                     Err(err) => kubewarden::reject_request(Some(err.to_string()), None, None, None),
                 };
@@ -169,7 +172,9 @@ mod tests {
             name: String::from("Valid name"),
             fixture_file: String::from(request_file),
             expected_validation_result: true,
-            settings: Settings {},
+            settings: Settings {
+                ..Default::default()
+            },
         };
 
         let res = tc.eval(validate).unwrap();
@@ -189,7 +194,9 @@ mod tests {
             name: String::from("Bad name"),
             fixture_file: String::from(request_file),
             expected_validation_result: false,
-            settings: Settings {},
+            settings: Settings {
+                ..Default::default()
+            },
         };
 
         let res = tc.eval(validate).unwrap();
@@ -209,7 +216,9 @@ mod tests {
             name: String::from("Bad name"),
             fixture_file: String::from(request_file),
             expected_validation_result: false,
-            settings: Settings {},
+            settings: Settings {
+                ..Default::default()
+            },
         };
 
         let res = tc.eval(validate).unwrap();
@@ -229,7 +238,9 @@ mod tests {
             name: String::from("Valid name"),
             fixture_file: String::from(request_file),
             expected_validation_result: true,
-            settings: Settings {},
+            settings: Settings {
+                ..Default::default()
+            },
         };
 
         let res = tc.eval(validate).unwrap();
@@ -249,7 +260,9 @@ mod tests {
             name: String::from("Bad name"),
             fixture_file: String::from(request_file),
             expected_validation_result: false,
-            settings: Settings {},
+            settings: Settings {
+                ..Default::default()
+            },
         };
 
         let res = tc.eval(validate).unwrap();
@@ -269,7 +282,9 @@ mod tests {
             name: String::from("Bad name"),
             fixture_file: String::from(request_file),
             expected_validation_result: false,
-            settings: Settings {},
+            settings: Settings {
+                ..Default::default()
+            },
         };
 
         let res = tc.eval(validate).unwrap();
