@@ -1,36 +1,62 @@
 {
-  "uid": "1299d386-525b-4032-98ae-1949f69f9cfc",
+  "uid": "705ab4f5-6393-11e8-b7cc-42010a800002",
   "kind": {
-    "kind": "Pod",
-    "version": "v1"
+    "group": "",
+    "version": "v1",
+    "kind": "Pod"
+  },
+  "resource": {
+    "group": "",
+    "version": "v1",
+    "resource": "pods"
+  },
+  "requestKind": {
+    "group": "",
+    "version": "v1",
+    "kind": "Pod"
+  },
+  "requestResource": {
+    "group": "",
+    "version": "v1",
+    "resource": "pods"
+  },
+  "name": "nginx",
+  "namespace": "default",
+  "operation": "CREATE",
+  "userInfo": {
+    "groups": [
+      "system:masters"
+    ],
+    "username": "test-user"
   },
   "object": {
+    "apiVersion": "v1",
+    "kind": "Pod",
     "metadata": {
-      "name": "nginx",
-      "namespace": "ingress-system"
+      "name": "nginx"
     },
     "spec": {
       "containers": [
         {
           "image": "nginx",
-          "name": "nginx",
           "livenessProbe": {
             "failureThreshold": 3,
             "httpGet": {
-                "path": "/healthy",
-                "port": 8080,
-                "scheme": "HTTP"
+              "path": "/healthy",
+              "port": 8080,
+              "scheme": "HTTP"
             },
             "periodSeconds": 10,
             "successThreshold": 1,
             "timeoutSeconds": 1
           },
+          "name": "nginx",
           "readinessProbe": {
             "failureThreshold": 3,
             "httpGet": {
-                "path": "/ready",
-                "port": 8080,
-                "scheme": "HTTP"
+              "path": "/ready",
+              "port": 8080,
+              "scheme": "HTTP"
             },
             "periodSeconds": 10,
             "successThreshold": 1,
@@ -39,17 +65,5 @@
         }
       ]
     }
-  },
-  "operation": "CREATE",
-  "requestKind": {
-    "version": "v1",
-    "kind": "Pod"
-  },
-  "userInfo": {
-    "username": "alice",
-    "uid": "alice-uid",
-    "groups": [
-      "system:authenticated"
-    ]
   }
 }
