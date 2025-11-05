@@ -20,3 +20,11 @@
 	echo "$output"
 	[ $(expr "$output" : '.*"allowed":false.*') -ne 0 ]
 }
+
+@test "Reject invalid periodSeconds" {
+	run kwctl run  --request-path test_data/pod_creation_invalid_period_seconds.json --settings-path test_data/settings.json policy.wasm
+	[ "$status" -eq 0 ]
+	echo "$output"
+	[ $(expr "$output" : '.*"allowed":false.*') -ne 0 ]
+	[ $(expr "$output" : '.*periodSeconds validation failed: 30 is above the limit of 10.*') -ne 0 ]
+}
