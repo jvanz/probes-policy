@@ -7,7 +7,7 @@
 version: 0.2.0
 name: probes-policy
 displayName: Probes validator policy
-createdAt: 2025-11-04T14:50:30.897671138Z
+createdAt: 2025-11-06T11:26:29.021064077Z
 description: This policy validates that all containers have livenessProbe and readinessProbe defined.
 license: Apache-2.0
 homeURL: https://github.com/kubewarden/probes-policy
@@ -31,6 +31,8 @@ install: |
 maintainers:
 - name: Kubewarden developers
   email: cncf-kubewarden-maintainers@lists.cncf.io
+- name: Nicolas Lamirault
+  email: nicolas.lamirault@gmail.com
 provider:
   name: kubewarden
 recommendations:
