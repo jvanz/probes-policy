@@ -1,20 +1,4 @@
-// Copyright (C) Nicolas Lamirault <nicolas.lamirault@gmail.com>
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
-// SPDX-License-Identifier: Apache-2.0
-
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use lazy_static::lazy_static;
 
 use guest::prelude::*;
@@ -28,7 +12,7 @@ use kubewarden::{logging, protocol_version_guest, request::ValidationRequest, va
 mod settings;
 use settings::Settings;
 
-use slog::{info, o, warn, Logger};
+use slog::{Logger, info, o, warn};
 
 lazy_static! {
     static ref LOG_DRAIN: Logger = Logger::root(
@@ -37,7 +21,7 @@ lazy_static! {
     );
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wapc_init() {
     register_function("validate", validate);
     register_function("validate_settings", validate_settings::<Settings>);
@@ -158,7 +142,10 @@ fn validate(payload: &[u8]) -> CallResult {
             kubewarden::accept_request()
         }
         Err(_) => {
-            warn!(LOG_DRAIN, "cannot unmarshal resource: this policy does not know how to evaluate this resource; accept it");
+            warn!(
+                LOG_DRAIN,
+                "cannot unmarshal resource: this policy does not know how to evaluate this resource; accept it"
+            );
             kubewarden::reject_request(
                 Some("Cannot parse validation request".to_string()),
                 None,
