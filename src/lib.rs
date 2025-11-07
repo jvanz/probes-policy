@@ -9,10 +9,13 @@ use k8s_openapi::api::core::v1 as apicore;
 extern crate kubewarden_policy_sdk as kubewarden;
 use kubewarden::{logging, protocol_version_guest, request::ValidationRequest, validate_settings};
 
+mod errors;
 mod settings;
 use settings::Settings;
 
 use slog::{Logger, info, o, warn};
+
+use crate::errors::{ContainerError, PolicyValidationError, ProbeError};
 
 lazy_static! {
     static ref LOG_DRAIN: Logger = Logger::root(
@@ -31,30 +34,33 @@ pub extern "C" fn wapc_init() {
 // This function is used to validate the probe periods configurations.
 fn validate_time_configuration<T>(
     time_value: Option<T>,
-    settings: Option<&settings::ProbeTimeConfiguration<T>>,
-) -> Result<()>
+    probe_time_conf: Option<&settings::ProbeTimeConfiguration<T>>,
+) -> Result<(), PolicyValidationError>
 where
     T: Into<i64> + Copy,
 {
     let time_value = time_value.map(|v| v.into());
 
-    if let Some(time_config) = settings
-        && let Some(time) = time_value
-    {
-        let time_config_min = time_config.minimum.map(|v| v.into());
-        if let Some(minimum) = &time_config_min
-            && time < *minimum
-        {
-            return Err(anyhow!("{} is below the minimum of {}", time, minimum));
-        }
+    if let Some(time_config) = probe_time_conf {
+        if let Some(time) = time_value {
+            let time_config_min = time_config.minimum.map(|v| v.into());
+            if let Some(minimum) = &time_config_min
+                && time < *minimum
+            {
+                return Err(PolicyValidationError::BelowMinimum(time, *minimum));
+            }
 
-        let time_config_limit = time_config.limit.map(|v| v.into());
-        if let Some(limit) = &time_config_limit
-            && time > *limit
-        {
-            return Err(anyhow!("{} is above the limit of {}", time, limit));
+            let time_config_limit = time_config.limit.map(|v| v.into());
+            if let Some(limit) = &time_config_limit
+                && time > *limit
+            {
+                return Err(PolicyValidationError::AboveLimit(time, *limit));
+            }
+        } else {
+            return Err(PolicyValidationError::MissingValue);
         }
     }
+
     Ok(())
 }
 
@@ -62,52 +68,54 @@ where
 fn validate_probe(
     probe: &apicore::Probe,
     probe_settings: &settings::ProbeConfiguration,
-) -> Result<()> {
+) -> Result<(), ProbeError> {
     validate_time_configuration(probe.period_seconds, probe_settings.period_seconds.as_ref())
-        .map_err(|e| anyhow!("periodSeconds validation failed: {}", e.to_string()))?;
+        .map_err(|e| ProbeError::FieldValidationError("periodSeconds".to_owned(), e))?;
+
     validate_time_configuration(
         probe.failure_threshold,
         probe_settings.failure_threshold.as_ref(),
     )
-    .map_err(|e| anyhow!("failureThreshold validation failed: {}", e.to_string()))?;
+    .map_err(|e| ProbeError::FieldValidationError("failureThreshold".to_owned(), e))?;
+
     validate_time_configuration(
         probe.success_threshold,
         probe_settings.success_threshold.as_ref(),
     )
-    .map_err(|e| anyhow!("successThreshold validation failed: {}", e.to_string()))?;
+    .map_err(|e| ProbeError::FieldValidationError("successThreshold".to_owned(), e))?;
+
     validate_time_configuration(
         probe.termination_grace_period_seconds,
         probe_settings.termination_grace_period_seconds.as_ref(),
     )
-    .map_err(|e| {
-        anyhow!(
-            "terminationGracePeriodSeconds validation failed: {}",
-            e.to_string()
-        )
-    })?;
+    .map_err(|e| ProbeError::FieldValidationError("terminationGracePeriodSeconds".to_owned(), e))?;
+
     validate_time_configuration(
         probe.timeout_seconds,
         probe_settings.timeout_seconds.as_ref(),
     )
-    .map_err(|e| anyhow!("timeoutSeconds validation failed: {}", e.to_string()))?;
+    .map_err(|e| ProbeError::FieldValidationError("timeoutSeconds".to_owned(), e))?;
+
     validate_time_configuration(
         probe.initial_delay_seconds,
         probe_settings.initial_delay_seconds.as_ref(),
     )
-    .map_err(|e| anyhow!("initialDelaySeconds validation failed: {}", e.to_string()))
+    .map_err(|e| ProbeError::FieldValidationError("initialDelaySeconds".to_owned(), e))?;
+
+    Ok(())
 }
 
-fn validate_container(container: &apicore::Container, settings: &Settings) -> Result<()> {
+fn validate_container(
+    container: &apicore::Container,
+    settings: &Settings,
+) -> Result<(), ProbeError> {
     if container.liveness_probe.is_none() && settings.liveness.enforce {
         info!(
             LOG_DRAIN,
             "rejecting pod";
             "container_name" => &container.name
         );
-        return Err(anyhow!(
-            "container {} without liveness probe is not accepted",
-            &container.name
-        ));
+        return Err(ProbeError::MissingLivenessProbe(container.name.clone()));
     }
     if container.liveness_probe.is_some() && settings.liveness.enforce {
         validate_probe(
@@ -121,10 +129,7 @@ fn validate_container(container: &apicore::Container, settings: &Settings) -> Re
             "rejecting pod";
             "container_name" => &container.name
         );
-        return Err(anyhow!(
-            "container {} without readiness probe is not accepted",
-            &container.name
-        ));
+        return Err(ProbeError::MissingReadinessProbe(container.name.clone()));
     }
     if container.readiness_probe.is_some() && settings.readiness.enforce {
         validate_probe(
@@ -138,17 +143,14 @@ fn validate_container(container: &apicore::Container, settings: &Settings) -> Re
 fn validate_ephemeral_container(
     container: &apicore::EphemeralContainer,
     settings: &Settings,
-) -> Result<()> {
+) -> Result<(), ProbeError> {
     if container.liveness_probe.is_none() && settings.liveness.enforce {
         info!(
             LOG_DRAIN,
             "rejecting pod";
             "container_name" => &container.name
         );
-        return Err(anyhow!(
-            "container {} without liveness probe is not accepted",
-            &container.name
-        ));
+        return Err(ProbeError::MissingLivenessProbe(container.name.clone()));
     }
     if container.readiness_probe.is_none() && settings.readiness.enforce {
         info!(
@@ -156,10 +158,7 @@ fn validate_ephemeral_container(
             "rejecting pod";
             "container_name" => &container.name
         );
-        return Err(anyhow!(
-            "container {} without readiness probe is not accepted",
-            &container.name
-        ));
+        return Err(ProbeError::MissingReadinessProbe(container.name.clone()));
     }
     Ok(())
 }
@@ -167,39 +166,27 @@ fn validate_ephemeral_container(
 fn validate_pod(pod: &apicore::PodSpec, settings: &Settings) -> Result<()> {
     let mut err_message = String::new();
     for container in &pod.containers {
-        let container_valid = validate_container(container, settings);
-        if container_valid.is_err() {
-            err_message = err_message
-                + &format!(
-                    "container {} is invalid: {}\n",
-                    container.name,
-                    container_valid.unwrap_err()
-                );
-        }
+        let container_valid = validate_container(container, settings)
+            .map_err(|e| ContainerError::Container(container.name.clone(), e));
+        if let Err(e) = container_valid {
+            err_message = err_message + &e.to_string();
+        };
     }
     if let Some(init_containers) = &pod.init_containers {
         for container in init_containers {
-            let container_valid = validate_container(container, settings);
-            if container_valid.is_err() {
-                err_message = err_message
-                    + &format!(
-                        "init container {} is invalid: {}\n",
-                        container.name,
-                        container_valid.unwrap_err()
-                    );
+            let container_valid = validate_container(container, settings)
+                .map_err(|e| ContainerError::InitContainer(container.name.clone(), e));
+            if let Err(e) = container_valid {
+                err_message = err_message + &e.to_string();
             }
         }
     }
     if let Some(ephemeral_containers) = &pod.ephemeral_containers {
         for container in ephemeral_containers {
-            let container_valid = validate_ephemeral_container(container, settings);
-            if container_valid.is_err() {
-                err_message = err_message
-                    + &format!(
-                        "ephemeral container {} is invalid: {}\n",
-                        container.name,
-                        container_valid.unwrap_err()
-                    );
+            let container_valid = validate_ephemeral_container(container, settings)
+                .map_err(|e| ContainerError::EphemeralContainer(container.name.clone(), e));
+            if let Err(e) = container_valid {
+                err_message = err_message + &e.to_string();
             }
         }
     }
@@ -261,7 +248,7 @@ mod tests {
             }),
             ..Default::default()
         },
-        Some("failureThreshold validation failed: 4 is below the minimum of 5")
+        Some(ProbeError::FieldValidationError("failureThreshold".to_string(), PolicyValidationError::BelowMinimum(4,5)))
     )]
     #[case::failure_threshold_above_minimum(
         &apicore::Probe {
@@ -276,7 +263,7 @@ mod tests {
             }),
             ..Default::default()
         },
-        Some("failureThreshold validation failed: 16 is above the limit of 15")
+        Some(ProbeError::FieldValidationError("failureThreshold".to_string(), PolicyValidationError::AboveLimit(16,15)))
     )]
     #[case::failure_threshold_between_expected_range(
         &apicore::Probe {
@@ -306,7 +293,7 @@ mod tests {
             }),
             ..Default::default()
         },
-        Some("initialDelaySeconds validation failed: 4 is below the minimum of 5")
+        Some(ProbeError::FieldValidationError("initialDelaySeconds".to_string(), PolicyValidationError::BelowMinimum(4,5)))
     )]
     #[case::initial_delay_seconds_above_minimum(
         &apicore::Probe {
@@ -321,7 +308,7 @@ mod tests {
             }),
             ..Default::default()
         },
-        Some("initialDelaySeconds validation failed: 16 is above the limit of 15")
+        Some(ProbeError::FieldValidationError("initialDelaySeconds".to_string(), PolicyValidationError::AboveLimit(16,15)))
     )]
     #[case::initial_delay_seconds_between_expected_range(
         &apicore::Probe {
@@ -351,7 +338,7 @@ mod tests {
             }),
             ..Default::default()
         },
-        Some("periodSeconds validation failed: 4 is below the minimum of 5")
+        Some(ProbeError::FieldValidationError("periodSeconds".to_string(), PolicyValidationError::BelowMinimum(4,5)))
     )]
     #[case::period_seconds_above_minimum(
         &apicore::Probe {
@@ -366,7 +353,7 @@ mod tests {
             }),
             ..Default::default()
         },
-        Some("periodSeconds validation failed: 16 is above the limit of 15")
+        Some(ProbeError::FieldValidationError("periodSeconds".to_string(), PolicyValidationError::AboveLimit(16,15)))
     )]
     #[case::period_seconds_between_expected_range(
         &apicore::Probe {
@@ -396,7 +383,7 @@ mod tests {
             }),
             ..Default::default()
         },
-        Some("successThreshold validation failed: 4 is below the minimum of 5")
+        Some(ProbeError::FieldValidationError("successThreshold".to_string(), PolicyValidationError::BelowMinimum(4,5)))
     )]
     #[case::success_threshold_above_minimum(
         &apicore::Probe {
@@ -411,7 +398,7 @@ mod tests {
             }),
             ..Default::default()
         },
-        Some("successThreshold validation failed: 16 is above the limit of 15")
+        Some(ProbeError::FieldValidationError("successThreshold".to_string(), PolicyValidationError::AboveLimit(16,15)))
     )]
     #[case::success_threshold_between_expected_range(
         &apicore::Probe {
@@ -441,7 +428,7 @@ mod tests {
             }),
             ..Default::default()
         },
-        Some("terminationGracePeriodSeconds validation failed: 4 is below the minimum of 5")
+        Some(ProbeError::FieldValidationError("terminationGracePeriodSeconds".to_string(), PolicyValidationError::BelowMinimum(4,5)))
     )]
     #[case::termination_grace_period_seconds_above_minimum(
         &apicore::Probe {
@@ -456,7 +443,7 @@ mod tests {
             }),
             ..Default::default()
         },
-        Some("terminationGracePeriodSeconds validation failed: 16 is above the limit of 15")
+        Some(ProbeError::FieldValidationError("terminationGracePeriodSeconds".to_string(), PolicyValidationError::AboveLimit(16,15)))
     )]
     #[case::termination_grace_period_seconds_between_expected_range(
         &apicore::Probe {
@@ -486,7 +473,7 @@ mod tests {
             }),
             ..Default::default()
         },
-        Some("timeoutSeconds validation failed: 4 is below the minimum of 5")
+        Some(ProbeError::FieldValidationError("timeoutSeconds".to_string(), PolicyValidationError::BelowMinimum(4,5)))
     )]
     #[case::timeout_seconds_above_minimum(
         &apicore::Probe {
@@ -501,7 +488,7 @@ mod tests {
             }),
             ..Default::default()
         },
-        Some("timeoutSeconds validation failed: 16 is above the limit of 15")
+        Some(ProbeError::FieldValidationError("timeoutSeconds".to_string(), PolicyValidationError::AboveLimit(16, 15)))
     )]
     #[case::timeout_seconds_between_expected_range(
         &apicore::Probe {
@@ -518,15 +505,36 @@ mod tests {
         },
         None,
     )]
+    #[case::missing_configuration_value(
+        &apicore::Probe {
+            timeout_seconds: None,
+            ..Default::default()
+        },
+        &settings::ProbeConfiguration {
+            enforce: true,
+            timeout_seconds: Some(settings::ProbeTimeConfiguration {
+                minimum: Some(5),
+                limit: Some(15),
+            }),
+            ..Default::default()
+        },
+        Some(ProbeError::FieldValidationError("timeoutSeconds".to_string(), PolicyValidationError::MissingValue)),
+    )]
     fn test_probe_fields_validation(
         #[case] probe: &apicore::Probe,
         #[case] settings: &settings::ProbeConfiguration,
-        #[case] error_message: Option<&str>,
+        #[case] error_message: Option<ProbeError>,
     ) {
         let result = validate_probe(probe, settings);
-        if error_message.is_some() {
+        if let Some(e) = error_message {
             let err = result.expect_err("probe should be invalid");
-            assert_eq!(err.to_string(), error_message.unwrap());
+            assert_eq!(
+                err,
+                e,
+                "probe validation did not return the expected error. Got: {:?}, expected: {:?}",
+                err.to_string(),
+                e.to_string()
+            );
             return;
         }
         result.expect("probe should be valid");

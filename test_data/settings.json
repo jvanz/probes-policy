@@ -5,19 +5,11 @@
       "minimum": 1,
       "limit": 10
     },
-    "initialDelaySeconds": {
-      "minimum": 1,
-      "limit": 10
-    },
     "periodSeconds": {
       "minimum": 1,
       "limit": 10
     },
     "successThreshold": {
-      "minimum": 1,
-      "limit": 10
-    },
-    "terminationGracePeriodSeconds": {
       "minimum": 1,
       "limit": 10
     },
@@ -32,19 +24,11 @@
       "minimum": 1,
       "limit": 10
     },
-    "initialDelaySeconds": {
-      "minimum": 1,
-      "limit": 10
-    },
     "periodSeconds": {
       "minimum": 1,
       "limit": 10
     },
     "successThreshold": {
-      "minimum": 1,
-      "limit": 10
-    },
-    "terminationGracePeriodSeconds": {
       "minimum": 1,
       "limit": 10
     },

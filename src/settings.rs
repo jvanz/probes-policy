@@ -1,11 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-const NONE_ENFORCEMENT_ERROR: &str =
-    "at least one of liveness or readiness probe enforcement must be enabled";
-const MISSING_MINIMUM_AND_LIMIT_ERROR: &str = "at least one of minimum or limit must be set";
-const MINIMUM_GREATER_THAN_LIMIT_ERROR: &str = "minimum cannot be greater than limit";
-const MINIMUM_LESS_THAN_EQUAL_ZERO_ERROR: &str = "minimum must be greater than zero";
-const LIMIT_LESS_THAN_EQUAL_ZERO_ERROR: &str = "limit must be greater than zero";
+use crate::errors::{ProbeSettingError, SettingsError, SettingsValidationError};
 
 // Describe the settings your policy expects when
 // loaded by the policy server.
@@ -56,50 +51,52 @@ impl Default for ProbeConfiguration {
 impl kubewarden::settings::Validatable for Settings {
     fn validate(&self) -> Result<(), String> {
         if !self.liveness.enforce && !self.readiness.enforce {
-            return Err(NONE_ENFORCEMENT_ERROR.to_string());
+            return Err(SettingsValidationError::NoneEnforcement.to_string());
         }
         self.liveness
             .validate()
-            .map_err(|e| format!("Invalid liveness probe: {}", e))?;
+            .map_err(|e| SettingsError::InvalidLivenessSettings(e).to_string())?;
         self.readiness
             .validate()
-            .map_err(|e| format!("Invalid readiness probe: {}", e))
+            .map_err(|e| SettingsError::InvalidReadinessSettings(e).to_string())
     }
 }
 
 impl ProbeConfiguration {
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), ProbeSettingError> {
         if let Some(ref self_period_seconds) = self.period_seconds {
             self_period_seconds
                 .validate()
-                .map_err(|e| format!("periodSeconds: {}", e))?;
+                .map_err(|e| ProbeSettingError::InvalidField("periodSeconds".to_owned(), e))?;
         }
         if let Some(ref self_failure_threshold) = self.failure_threshold {
             self_failure_threshold
                 .validate()
-                .map_err(|e| format!("failureThreshold: {}", e))?;
+                .map_err(|e| ProbeSettingError::InvalidField("failureThreshold".to_string(), e))?;
         }
         if let Some(ref self_initial_delay_seconds) = self.initial_delay_seconds {
-            self_initial_delay_seconds
-                .validate()
-                .map_err(|e| format!("initialDelaySeconds: {}", e))?;
+            self_initial_delay_seconds.validate().map_err(|e| {
+                ProbeSettingError::InvalidField("initialDelaySeconds".to_owned(), e)
+            })?;
         }
         if let Some(ref self_success_threshold) = self.success_threshold {
             self_success_threshold
                 .validate()
-                .map_err(|e| format!("successThreshold: {}", e))?;
+                .map_err(|e| ProbeSettingError::InvalidField("successThreshold".to_owned(), e))?;
         }
         if let Some(ref self_termination_grace_period_seconds) =
             self.termination_grace_period_seconds
         {
             self_termination_grace_period_seconds
                 .validate()
-                .map_err(|e| format!("terminationGracePeriodSeconds: {}", e))?;
+                .map_err(|e| {
+                    ProbeSettingError::InvalidField("terminationGracePeriodSeconds".to_owned(), e)
+                })?;
         }
         if let Some(ref self_timeout_seconds) = self.timeout_seconds {
             self_timeout_seconds
                 .validate()
-                .map_err(|e| format!("timeoutSeconds: {}", e))?;
+                .map_err(|e| ProbeSettingError::InvalidField("timeoutSeconds".to_owned(), e))?;
         }
         Ok(())
     }
@@ -109,9 +106,9 @@ impl<T> ProbeTimeConfiguration<T>
 where
     T: Into<i64> + Copy,
 {
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), SettingsValidationError> {
         if self.minimum.is_none() && self.limit.is_none() {
-            return Err(MISSING_MINIMUM_AND_LIMIT_ERROR.to_owned());
+            return Err(SettingsValidationError::MissingMinimumAndLimit);
         }
 
         let minimum = self.minimum.as_ref().map(|v| Into::<i64>::into(*v));
@@ -120,17 +117,17 @@ where
         if let Some(min) = minimum
             && min <= 0
         {
-            return Err(MINIMUM_LESS_THAN_EQUAL_ZERO_ERROR.to_owned());
+            return Err(SettingsValidationError::MinimumLessThanEqualZero);
         }
         if let Some(limit) = limit
             && limit <= 0
         {
-            return Err(LIMIT_LESS_THAN_EQUAL_ZERO_ERROR.to_owned());
+            return Err(SettingsValidationError::LimitLessThanEqualZero);
         }
         if let (Some(min), Some(limit)) = (minimum, limit)
             && min > limit
         {
-            return Err(MINIMUM_GREATER_THAN_LIMIT_ERROR.to_owned());
+            return Err(SettingsValidationError::MinimumGreaterThanLimit);
         }
         Ok(())
     }
@@ -156,7 +153,7 @@ mod tests {
                 enforce: false,
                 ..Default::default()
             },
-        }, Some(NONE_ENFORCEMENT_ERROR))]
+        }, Some(SettingsValidationError::NoneEnforcement))]
     #[case::validate_settings_with_invalid_period_seconds_range(Settings {
             readiness: ProbeConfiguration {
                 enforce: true,
@@ -167,7 +164,7 @@ mod tests {
                 ..Default::default()
             },
                 ..Default::default()
-        }, Some(MINIMUM_GREATER_THAN_LIMIT_ERROR))]
+        }, Some(SettingsValidationError::MinimumGreaterThanLimit))]
     #[case::missing_minimum_and_limit(Settings {
             liveness: ProbeConfiguration {
                 enforce: true,
@@ -178,7 +175,7 @@ mod tests {
                 ..Default::default()
             },
                 ..Default::default()
-        }, Some(MISSING_MINIMUM_AND_LIMIT_ERROR))]
+        }, Some(SettingsValidationError::MissingMinimumAndLimit))]
     #[case::minimum_less_than_zero(Settings {
             liveness: ProbeConfiguration {
                 enforce: true,
@@ -189,7 +186,7 @@ mod tests {
                 ..Default::default()
             },
                 ..Default::default()
-        }, Some(MINIMUM_LESS_THAN_EQUAL_ZERO_ERROR))]
+        }, Some(SettingsValidationError::MinimumLessThanEqualZero))]
     #[case::limit_less_than_zero(Settings {
             liveness: ProbeConfiguration {
                 enforce: true,
@@ -200,15 +197,22 @@ mod tests {
                 ..Default::default()
             },
                 ..Default::default()
-        }, Some(LIMIT_LESS_THAN_EQUAL_ZERO_ERROR))]
-    fn validate_settings(#[case] settings: Settings, #[case] expected_error: Option<&str>) {
+        }, Some(SettingsValidationError::LimitLessThanEqualZero))]
+    fn validate_settings(
+        #[case] settings: Settings,
+        #[case] expected_error: Option<SettingsValidationError>,
+    ) {
         let result = settings.validate();
         if expected_error.is_some() {
             assert!(
                 result
+                    .clone()
                     .expect_err("validation should fail")
                     .to_owned()
-                    .contains(expected_error.unwrap())
+                    .contains(expected_error.as_ref().unwrap().to_string().as_str()),
+                "expected error not found. got: {:?}, expected: {:?}",
+                result.unwrap_err(),
+                expected_error.unwrap().to_string(),
             );
             return;
         }
