@@ -28,25 +28,28 @@ pub extern "C" fn wapc_init() {
     register_function("protocol_version", protocol_version_guest);
 }
 
-// This function is used to validate the probe periods configurations. It's a
-// genetic function because the time values can be either i32 or i64 depending on
-// the field.
+// This function is used to validate the probe periods configurations.
 fn validate_time_configuration<T>(
     time_value: Option<T>,
     settings: Option<&settings::ProbeTimeConfiguration<T>>,
 ) -> Result<()>
 where
-    T: PartialOrd + std::fmt::Display,
+    T: Into<i64> + Copy,
 {
+    let time_value = time_value.map(|v| v.into());
+
     if let Some(time_config) = settings
         && let Some(time) = time_value
     {
-        if let Some(minimum) = &time_config.minimum
+        let time_config_min = time_config.minimum.map(|v| v.into());
+        if let Some(minimum) = &time_config_min
             && time < *minimum
         {
             return Err(anyhow!("{} is below the minimum of {}", time, minimum));
         }
-        if let Some(limit) = &time_config.limit
+
+        let time_config_limit = time_config.limit.map(|v| v.into());
+        if let Some(limit) = &time_config_limit
             && time > *limit
         {
             return Err(anyhow!("{} is above the limit of {}", time, limit));

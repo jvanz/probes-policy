@@ -29,7 +29,10 @@ pub(crate) struct ProbeConfiguration {
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
-pub(crate) struct ProbeTimeConfiguration<T> {
+pub(crate) struct ProbeTimeConfiguration<T>
+where
+    T: Into<i64> + Copy,
+{
     pub minimum: Option<T>,
     pub limit: Option<T>,
 }
@@ -104,23 +107,27 @@ impl ProbeConfiguration {
 
 impl<T> ProbeTimeConfiguration<T>
 where
-    T: PartialOrd + From<u8>,
+    T: Into<i64> + Copy,
 {
     pub fn validate(&self) -> Result<(), String> {
         if self.minimum.is_none() && self.limit.is_none() {
             return Err(MISSING_MINIMUM_AND_LIMIT_ERROR.to_owned());
         }
-        if let Some(min) = self.minimum.as_ref()
-            && *min <= T::from(0u8)
+
+        let minimum = self.minimum.as_ref().map(|v| Into::<i64>::into(*v));
+        let limit = self.limit.as_ref().map(|v| Into::<i64>::into(*v));
+
+        if let Some(min) = minimum
+            && min <= 0
         {
             return Err(MINIMUM_LESS_THAN_EQUAL_ZERO_ERROR.to_owned());
         }
-        if let Some(limit) = self.limit.as_ref()
-            && *limit <= T::from(0u8)
+        if let Some(limit) = limit
+            && limit <= 0
         {
             return Err(LIMIT_LESS_THAN_EQUAL_ZERO_ERROR.to_owned());
         }
-        if let (Some(min), Some(limit)) = (self.minimum.as_ref(), self.limit.as_ref())
+        if let (Some(min), Some(limit)) = (minimum, limit)
             && min > limit
         {
             return Err(MINIMUM_GREATER_THAN_LIMIT_ERROR.to_owned());
