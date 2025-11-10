@@ -17,9 +17,9 @@
           "livenessProbe": {
             "failureThreshold": 3,
             "httpGet": {
-                "path": "/healthy",
-                "port": 8080,
-                "scheme": "HTTP"
+              "path": "/healthy",
+              "port": 8080,
+              "scheme": "HTTP"
             },
             "periodSeconds": 10,
             "successThreshold": 1,
@@ -28,9 +28,9 @@
           "readinessProbe": {
             "failureThreshold": 3,
             "httpGet": {
-                "path": "/ready",
-                "port": 8080,
-                "scheme": "HTTP"
+              "path": "/ready",
+              "port": 8080,
+              "scheme": "HTTP"
             },
             "periodSeconds": 10,
             "successThreshold": 1,
@@ -45,9 +45,9 @@
           "livenessProbe": {
             "failureThreshold": 3,
             "httpGet": {
-                "path": "/ready",
-                "port": 8080,
-                "scheme": "HTTP"
+              "path": "/ready",
+              "port": 8080,
+              "scheme": "HTTP"
             },
             "periodSeconds": 10,
             "successThreshold": 1,
@@ -65,8 +65,6 @@
   "userInfo": {
     "username": "alice",
     "uid": "alice-uid",
-    "groups": [
-      "system:authenticated"
-    ]
+    "groups": ["system:authenticated"]
   }
 }

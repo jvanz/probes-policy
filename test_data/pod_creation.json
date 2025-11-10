@@ -24,9 +24,7 @@
   "namespace": "default",
   "operation": "CREATE",
   "userInfo": {
-    "groups": [
-      "system:masters"
-    ],
+    "groups": ["system:masters"],
     "username": "test-user"
   },
   "object": {

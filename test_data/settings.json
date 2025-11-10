@@ -1,0 +1,40 @@
+{
+  "liveness": {
+    "enforce": true,
+    "failureThreshold": {
+      "minimum": 1,
+      "limit": 10
+    },
+    "periodSeconds": {
+      "minimum": 1,
+      "limit": 10
+    },
+    "successThreshold": {
+      "minimum": 1,
+      "limit": 10
+    },
+    "timeoutSeconds": {
+      "minimum": 1,
+      "limit": 10
+    }
+  },
+  "readiness": {
+    "enforce": true,
+    "failureThreshold": {
+      "minimum": 1,
+      "limit": 10
+    },
+    "periodSeconds": {
+      "minimum": 1,
+      "limit": 10
+    },
+    "successThreshold": {
+      "minimum": 1,
+      "limit": 10
+    },
+    "timeoutSeconds": {
+      "minimum": 1,
+      "limit": 10
+    }
+  }
+}
