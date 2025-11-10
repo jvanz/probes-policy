@@ -203,19 +203,16 @@ mod tests {
         #[case] expected_error: Option<SettingsValidationError>,
     ) {
         let result = settings.validate();
-        if expected_error.is_some() {
+        if let Some(expected) = expected_error {
+            let error = result.expect_err("validation should fail");
             assert!(
-                result
-                    .clone()
-                    .expect_err("validation should fail")
-                    .to_owned()
-                    .contains(expected_error.as_ref().unwrap().to_string().as_str()),
-                "expected error not found. got: {:?}, expected: {:?}",
-                result.unwrap_err(),
-                expected_error.unwrap().to_string(),
+                error.contains(&expected.to_string()),
+                "expected error: {:?}, got: {}",
+                expected,
+                error
             );
-            return;
+        } else {
+            assert!(result.is_ok());
         }
-        assert!(result.is_ok());
     }
 }
